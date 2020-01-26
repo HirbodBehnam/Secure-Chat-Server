@@ -1,0 +1,19 @@
+{
+  "port": ":1234",
+  "files": "files",
+  "file_save_duration" : 1440,
+  "database" : {
+    "location": "localhost:3306",
+    "username": "root",
+    "password": "Hirbod",
+    "db_name" : "chat"
+  },
+  "ws_connection":{
+    "key": "key.pem",
+    "certificate": "cert.pem"
+  },
+  "rsa_keys": {
+    "private_key": "private.pem",
+    "public_key": "public.pem"
+  }
+}
