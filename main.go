@@ -134,7 +134,7 @@ func registerClient(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(GenerateStatus(false, "cannot update the database"))
 		return
 	}
-	_, _ = w.Write(GenerateStatus(true, result.(map[string]interface{})["username"].(string)))
+	_, _ = w.Write(GenerateStatus(true, result.(map[string]interface{})["name"].(string)))
 }
 func logoutClient(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
