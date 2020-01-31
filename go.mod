@@ -10,6 +10,7 @@ require (
 	github.com/rocketlaunchr/dbq v1.1.9
 	github.com/rocketlaunchr/mysql-go v1.1.3
 	github.com/segmentio/ksuid v1.0.2
+	github.com/sirupsen/logrus v1.4.2
 	github.com/urfave/cli/v2 v2.1.1
 	golang.org/x/crypto v0.0.0-20190605123033-f99c8df09eb5
 )

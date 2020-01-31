@@ -319,16 +319,14 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 		var date = time.Now()
 		err = json.Unmarshal(message, &data)
 		if err != nil {
-			_ = c.WriteJSON(StatusStruct{OK: false, Message: "invalid message struct"})
+			_ = c.WriteJSON(MessageStatusStruct{OK: false, ID: "", Message: "invalid message struct"})
 			continue
 		}
-		// TODO: add a message validator
-		_ = c.WriteJSON(StatusStruct{OK: true, Message: "msg sent"})
 
 		// check file upload request
 		if data.Type == 3 {
 			id := ksuid.New()
-			_ = c.WriteJSON(StatusStruct{OK: true, Message: id.String()})
+			_ = c.WriteJSON(MessageStatusStruct{OK: true, ID: data.ID, Message: id.String()})
 			uploadTokens[id.String()] = 0
 			continue
 		}
@@ -342,13 +340,16 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 			toSend.Payload.Message = msg.Payload.Message
 
 			// Check if the user is currently online
+			// if it's online, directly send it via ws
 			ws, online := clients.Get(msg.Payload.To)
 			if online { //Directly send the message to them
 				err = ws.(*websocket.Conn).WriteJSON(toSend)
-				if err == nil {
+				if err == nil { // if message delivering via websocket fails, store it in database
+					_ = c.WriteJSON(MessageStatusStruct{OK: true, ID: data.ID, Message: "sent"})
 					return // Message successfully delivered
 				}
 			}
+
 			// if the user is not online, store the message in database
 			user := []interface{}{
 				dbq.Struct(UserChatDBRow{toSend.Payload.From, toSend.Type, toSend.Payload.Date, toSend.Payload.Message}),
@@ -357,8 +358,11 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 			ctx := context.Background()
 			_, err = dbq.E(ctx, db, stmt, nil, user)
 			if err != nil {
-				log.Error("cannot deliver message to user:", err, "msg:", toSend) //todo: callback user
+				log.Error("cannot deliver message to user:", err, "msg:", toSend)
+				_ = c.WriteJSON(MessageStatusStruct{OK: false, ID: data.ID, Message: "database error"})
+				return
 			}
+			_ = c.WriteJSON(MessageStatusStruct{OK: true, ID: data.ID, Message: "sent"})
 		}(data, date)
 	}
 }

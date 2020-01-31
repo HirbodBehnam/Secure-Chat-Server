@@ -9,7 +9,8 @@ import (
 
 // Types that are message based
 type ReceiveMessageStruct struct {
-	Type    byte `json:"type"`
+	Type    byte   `json:"type"`
+	ID      string `json:"id"`
 	Payload struct {
 		To      string `json:"to"`
 		Message string `json:"message"`
@@ -40,6 +41,12 @@ type UserDataStruct struct {
 
 type StatusStruct struct {
 	OK      bool   `json:"ok"`
+	Message string `json:"message"`
+}
+
+type MessageStatusStruct struct {
+	OK      bool   `json:"ok"`
+	ID      string `json:"id"`
 	Message string `json:"message"`
 }
 
