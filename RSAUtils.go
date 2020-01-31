@@ -1,6 +1,7 @@
 package main
 
 // From https://gist.github.com/miguelmota/3ea9286bd1d3c2a985b67cac4ba2130a
+// Editor https://github.com/miguelmota
 
 import (
 	"crypto/rand"
