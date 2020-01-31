@@ -15,12 +15,12 @@ import (
 	"github.com/rocketlaunchr/dbq"
 	sql "github.com/rocketlaunchr/mysql-go"
 	"github.com/segmentio/ksuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/ssh/terminal"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -77,9 +77,6 @@ var RSAKeys struct {
 	PrivateKey *rsa.PrivateKey
 }
 
-func home(w http.ResponseWriter, r *http.Request) {
-
-}
 func registerClient(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		return
@@ -97,6 +94,7 @@ func registerClient(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	result, err := dbq.Q(ctx, db, "SELECT * FROM `users` WHERE `username`=? LIMIT 1", dbq.SingleResult, username)
 	if err != nil {
+		log.Error("cannot access database when a client tried to register:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot connect to database"))
 		return
 	}
@@ -131,6 +129,7 @@ func registerClient(w http.ResponseWriter, r *http.Request) {
 	// login the user
 	_, err = dbq.E(ctx, db, "UPDATE `users` SET `logged_in` = '1' , `public_key` = ? WHERE `username` = ?", nil, key, username)
 	if err != nil {
+		log.Error("cannot update database when a client tried to register:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot update the database"))
 		return
 	}
@@ -153,6 +152,7 @@ func logoutClient(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	result, err := dbq.Q(ctx, db, "SELECT password FROM `users` WHERE `username`=? LIMIT 1", dbq.SingleResult, username)
 	if err != nil {
+		log.Error("cannot access database when a client tried to logout:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot connect to database"))
 		return
 	}
@@ -177,7 +177,7 @@ func logoutClient(w http.ResponseWriter, r *http.Request) {
 	// Verify the signature
 	pubKey, err := base64.StdEncoding.DecodeString(result.(map[string]interface{})["public_key"].(string))
 	if err != nil {
-		_, _ = w.Write(GenerateStatus(false, "cannot get public key from server"))
+		_, _ = w.Write(GenerateStatus(false, "cannot get public key from database"))
 		return
 	}
 	if len(pubKey) != 32 {
@@ -206,6 +206,7 @@ func logoutClient(w http.ResponseWriter, r *http.Request) {
 	// logout the user
 	_, err = dbq.E(ctx, db, "UPDATE `users` SET `logged_in` = '0' , `public_key` = '0' WHERE `username` = ?", nil, username)
 	if err != nil {
+		log.Error("cannot update database when a client tried to logout:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot update the database"))
 		return
 	}
@@ -229,6 +230,7 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		result, err := dbq.Q(ctx, db, "SELECT * FROM `users` WHERE `username`=? LIMIT 1", dbq.SingleResult, helloMessage.Username)
 		if err != nil { // Invalid json file
+			log.Error("cannot access database when a client tried to register updater:", err.Error())
 			_ = c.WriteJSON(StatusStruct{OK: false, Message: "cannot fetch data from database: " + err.Error()})
 			return
 		}
@@ -239,7 +241,7 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 		// Verify the signature
 		pubKey, err := base64.StdEncoding.DecodeString(result.(map[string]interface{})["public_key"].(string))
 		if err != nil {
-			_ = c.WriteJSON(StatusStruct{OK: false, Message: "cannot get public key from server"})
+			_ = c.WriteJSON(StatusStruct{OK: false, Message: "cannot get public key from database"})
 			return
 		}
 		if len(pubKey) != 32 {
@@ -259,16 +261,16 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 			_ = c.WriteJSON(StatusStruct{OK: false, Message: "invalid signature"})
 			return
 		}
-		// we do not need to verify the password if we have verified the signature
+		// verify password
 		result = result.(map[string]interface{})["password"]
 		err = bcrypt.CompareHashAndPassword([]byte(result.(string)), []byte(helloMessage.Password))
 		if err != nil {
-			_ = c.WriteJSON(StatusStruct{OK: false, Message: "invalid signature"})
+			_ = c.WriteJSON(StatusStruct{OK: false, Message: "invalid password"})
 			return
 		}
 		// Update the connection list
 		if wsClient, exists := clients.Get(helloMessage.Username); exists {
-			_ = wsClient.(*websocket.Conn).Close() // Close older connections
+			_ = wsClient.(*websocket.Conn).Close() // Close older connections; This must not happen
 		}
 
 		username = helloMessage.Username
@@ -276,9 +278,11 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for { // fetch all of the old entries from database
+		// TODO: can we use an json array to send a lot of data at once?
 		ctx := context.Background()
 		result, err := dbq.Q(ctx, db, "SELECT * FROM "+username+" ORDER BY id LIMIT 1", dbq.SingleResult)
 		if err != nil {
+			log.Error("cannot access database when a server tried to fetch updates of a user:", err.Error())
 			_ = c.WriteJSON(StatusStruct{OK: false, Message: "server cannot access database"})
 			return
 		}
@@ -295,16 +299,19 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			// remove the entry from database
-			_, _ = dbq.E(ctx, db, "DELETE FROM `"+username+"` WHERE `id` = "+strconv.FormatInt(int64(update["id"].(int32)), 10), nil)
+			_, err = dbq.E(ctx, db, "DELETE FROM `"+username+"` WHERE `id` = "+strconv.FormatInt(int64(update["id"].(int32)), 10), nil)
+			if err != nil {
+				log.Error("cannot delete entry from database:", err)
+			}
 		}
 	}
 
-	clients.Set(username, c)
+	clients.Set(username, c) // set the websocket
 
 	for {
 		_, message, err := c.ReadMessage() // Get the message
 		if err != nil {
-			log.Println("read: ", err)
+			log.Debug("cannot read websocket:", err)
 			break
 		}
 		// Parse the message
@@ -315,6 +322,7 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 			_ = c.WriteJSON(StatusStruct{OK: false, Message: "invalid message struct"})
 			continue
 		}
+		// TODO: add a message validator
 		_ = c.WriteJSON(StatusStruct{OK: true, Message: "msg sent"})
 
 		// check file upload request
@@ -349,7 +357,7 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 			ctx := context.Background()
 			_, err = dbq.E(ctx, db, stmt, nil, user)
 			if err != nil {
-				log.Println("Cannot deliver message to user. err:", err, "msg:", toSend)
+				log.Error("cannot deliver message to user:", err, "msg:", toSend) //todo: callback user
 			}
 		}(data, date)
 	}
@@ -378,6 +386,7 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	result, err := dbq.Q(ctx, db, "SELECT password FROM `users` WHERE `username`=? LIMIT 1", dbq.SingleResult, username)
 	if err != nil {
+		log.Error("cannot access database when a client tried to change it's password:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot connect to database"))
 		return
 	}
@@ -406,6 +415,7 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 	newP, _ = bcrypt.GenerateFromPassword(newP, 10)
 	_, err = dbq.E(ctx, db, "UPDATE `users` SET `password` = '"+string(newP)+"' WHERE `username` = '"+username+"'", nil)
 	if err != nil {
+		log.Error("cannot update database when a client tried to change it's password:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot update the password"))
 		return
 	}
@@ -435,6 +445,7 @@ func changeName(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 	result, err := dbq.Q(ctx, db, "SELECT password FROM `users` WHERE `username`=? LIMIT 1", dbq.SingleResult, username)
 	if err != nil {
+		log.Error("cannot access database when a client tried to change it's password:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot connect to database"))
 		return
 	}
@@ -457,6 +468,7 @@ func changeName(w http.ResponseWriter, r *http.Request) {
 	// set the name
 	_, err = dbq.E(ctx, db, "UPDATE `users` SET `name` = '"+name+"' WHERE `username` = '"+username+"'", nil)
 	if err != nil {
+		log.Error("cannot access database when a client tried to change it's password:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot update the password"))
 		return
 	}
@@ -514,12 +526,14 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 	f, err := os.OpenFile(path.Join(Config.FileLocation, token, handler.Filename), os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
+		log.Error("cannot create a file when a user tried to upload it's file:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot create file"))
 		return
 	}
 	defer f.Close()
 	_, err = io.Copy(f, file)
 	if err != nil {
+		log.Error("cannot copy the file when a user tried to upload it's file:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, "cannot create file"))
 		return
 	}
@@ -539,12 +553,14 @@ func downloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	info, err := ioutil.ReadDir(path.Join(Config.FileLocation, token) + "/")
 	if err != nil {
-		_, _ = w.Write(GenerateStatus(false, "missing token"))
+		log.Error("cannot access files when a user tried to download a file:", err.Error())
+		_, _ = w.Write(GenerateStatus(false, "cannot access files"))
 		return
 	}
 	// read the file https://mrwaggel.be/post/golang-transmit-files-over-a-nethttp-server-to-clients/
 	file, err := os.Open(info[0].Name())
 	if err != nil {
+		log.Error("cannot access the file when a user tried to download it's file:", err.Error())
 		_, _ = w.Write(GenerateStatus(false, err.Error()))
 		return
 	}
@@ -614,6 +630,7 @@ func main() {
 						maxDiff := time.Minute * time.Duration(Config.FileSaveDuration)
 						for {
 							time.Sleep(time.Minute)
+							log.Trace("removing unused tokens")
 							for k := range uploadTokens { // remove unused tokens
 								id, _ := ksuid.Parse(k)
 								if time.Now().Add(time.Minute * 10).Before(id.Time()) {
@@ -639,7 +656,6 @@ func main() {
 						}
 					}()
 					// Start the web server
-					http.HandleFunc("/", home)
 					http.HandleFunc("/chat/registerUpdater", registerUpdater)
 					http.HandleFunc("/users/changePassword", changePassword)
 					http.HandleFunc("/users/changeName", changeName)
@@ -663,13 +679,13 @@ func main() {
 						return err
 					}
 					//Try to open database
-					log.Println("Connecting to database...")
+					log.Info("Connecting to database...")
 					db, err = sql.Open("mysql", Config.Database.Username+":"+Config.Database.Password+"@tcp("+Config.Database.Location+")/"+Config.Database.DBName)
 					if err != nil {
 						return err
 					}
 					defer db.Close()
-					log.Println("Connected to database!")
+					log.Info("Connected to database!")
 					//Get the username and password
 					var name, username, password string
 					scanner := bufio.NewScanner(os.Stdin)
@@ -702,7 +718,7 @@ func main() {
 						password = string(bytePassword)
 					}
 					fmt.Println()
-					log.Println("Executing sql query")
+					log.Info("Executing sql query")
 					ctx := context.Background()
 					// Check if the user exists
 					result := dbq.MustQ(ctx, db, "SELECT * FROM `users` WHERE `username`=\""+username+"\"", dbq.SingleResult)
@@ -717,7 +733,7 @@ func main() {
 					dbq.MustE(ctx, db, stmt, nil, user)
 					// Create a new table for user
 					_, err = db.Exec("CREATE TABLE `chat`.`" + username + "` ( `id` INT NOT NULL AUTO_INCREMENT , `from_username` TINYTEXT NOT NULL , `message_type` TINYINT NOT NULL , `message_date` DATETIME NOT NULL , `payload` TEXT NOT NULL , PRIMARY KEY (`id`)) ENGINE = InnoDB;")
-					log.Println("User successfully added to database!")
+					log.Info("User successfully added to database!")
 					return err
 				},
 			},
@@ -747,7 +763,7 @@ func main() {
 						}
 					}
 					// Generate keys and save it
-					log.Println("Starting to generate keys...")
+					log.Info("Starting to generate keys...")
 					private, public := GenerateKeyPair(bits)
 					err = ioutil.WriteFile("public.pem", PublicKeyToBytes(public), 0644)
 					if err != nil {
@@ -757,7 +773,7 @@ func main() {
 					if err != nil {
 						return err
 					}
-					log.Println("Keys saved to public.pem and private.pem")
+					log.Info("Keys saved to public.pem and private.pem")
 					return nil
 				},
 			},
@@ -770,7 +786,7 @@ func main() {
 	err := app.Run(os.Args)
 	if err != nil {
 		fmt.Println()
-		log.Fatal("Error: ", err)
+		log.Fatal(err)
 	}
 
 }
