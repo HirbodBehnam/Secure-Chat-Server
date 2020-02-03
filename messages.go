@@ -9,7 +9,7 @@ import (
 
 // Types that are message based
 type ReceiveMessageStruct struct {
-	Type    byte   `json:"type"`
+	Type    byte   `json:"type"` // 0 -> Text Message / 1 -> File / 2 -> File Token Request
 	ID      string `json:"id"`
 	Payload struct {
 		To      string `json:"to"`

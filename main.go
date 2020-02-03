@@ -324,10 +324,11 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// check file upload request
-		if data.Type == 3 {
+		if data.Type == 2 {
 			id := ksuid.New()
 			_ = c.WriteJSON(MessageStatusStruct{OK: true, ID: data.ID, Message: id.String()})
 			uploadTokens[id.String()] = 0
+			os.Mkdir("files/"+id.String(), 0666)
 			continue
 		}
 
@@ -584,6 +585,7 @@ func downloadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	log.SetLevel(log.TraceLevel)
 	var configName = "config.json"
 	app := &cli.App{
 		Flags: []cli.Flag{
