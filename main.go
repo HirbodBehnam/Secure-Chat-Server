@@ -522,7 +522,12 @@ func upload(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(uploadTokens, token) // do not allow other uploads with this token :D (strict policy huh?)
 	// if the token is ok, get the file
-	_ = r.ParseMultipartForm(32 << 12)
+	err := r.ParseMultipartForm(32 << 12)
+	if err != nil {
+		_, _ = w.Write(GenerateStatus(false, "multipart parse error: "+err.Error()))
+		log.Error("Cannot parse the multipart form of a user when he was uploading:", err.Error())
+		return
+	}
 	file, handler, err := r.FormFile("document")
 	if err != nil {
 		_, _ = w.Write(GenerateStatus(false, err.Error()))
