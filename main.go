@@ -553,25 +553,25 @@ func downloadFile(w http.ResponseWriter, r *http.Request) {
 	// get token
 	token, err := GetParameter(r, "token")
 	if token == "" || err != nil {
-		_, _ = w.Write(GenerateStatus(false, "missing token"))
+		http.Error(w, string(GenerateStatus(false, "missing token")), 403)
 		return
 	}
 	// search the files
 	if _, err := os.Stat(path.Join(Config.FileLocation, token) + "/"); os.IsNotExist(err) {
-		_, _ = w.Write(GenerateStatus(false, "invalid token"))
+		http.Error(w, string(GenerateStatus(false, "invalid token")), 403)
 		return
 	}
 	info, err := ioutil.ReadDir(path.Join(Config.FileLocation, token) + "/")
 	if err != nil {
 		log.Error("cannot access files when a user tried to download a file:", err.Error())
-		_, _ = w.Write(GenerateStatus(false, "cannot access files"))
+		http.Error(w, string(GenerateStatus(false, "cannot access files")), 500)
 		return
 	}
 	// read the file https://mrwaggel.be/post/golang-transmit-files-over-a-nethttp-server-to-clients/
 	file, err := os.Open(info[0].Name())
 	if err != nil {
 		log.Error("cannot access the file when a user tried to download it's file:", err.Error())
-		_, _ = w.Write(GenerateStatus(false, err.Error()))
+		http.Error(w, string(GenerateStatus(false, err.Error())), 500)
 		return
 	}
 	defer file.Close()
