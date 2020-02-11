@@ -558,7 +558,7 @@ func downloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	// search the files
 	if _, err := os.Stat(path.Join(Config.FileLocation, token) + "/"); os.IsNotExist(err) {
-		http.Error(w, string(GenerateStatus(false, "invalid token")), 403)
+		http.Error(w, string(GenerateStatus(false, "invalid token")), 404)
 		return
 	}
 	info, err := ioutil.ReadDir(path.Join(Config.FileLocation, token) + "/")
