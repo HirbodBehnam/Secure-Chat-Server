@@ -590,7 +590,7 @@ func downloadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	log.SetLevel(log.TraceLevel)
+	log.SetLevel(log.TraceLevel) // TODO: add log level
 	var configName = "config.json"
 	app := &cli.App{
 		Flags: []cli.Flag{
@@ -646,20 +646,22 @@ func main() {
 								id, _ := ksuid.Parse(k)
 								if time.Now().Add(time.Minute * 10).Before(id.Time()) {
 									delete(uploadTokens, k)
+									log.Debug("Deleted unused token", k)
 								}
 							}
 							// remove files
 							files, err := ioutil.ReadDir(Config.FileLocation)
 							if err != nil {
-								log.Println("Cannot get directories for file cleanup")
+								log.Error("Cannot get directories for file cleanup")
 								continue
 							}
 							for _, f := range files {
 								if f.IsDir() {
 									if f.ModTime().Add(maxDiff).After(time.Now()) {
+										log.Debug("Removing old file", f.Name())
 										err = os.RemoveAll(f.Name())
 										if err != nil {
-											log.Println("Cannot get directories for file cleanup")
+											log.Error("Cannot get directories for file cleanup")
 										}
 									}
 								}
