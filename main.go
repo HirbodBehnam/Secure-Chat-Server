@@ -326,9 +326,14 @@ func registerUpdater(w http.ResponseWriter, r *http.Request) {
 		// check file upload request
 		if data.Type == 2 {
 			id := ksuid.New()
-			_ = c.WriteJSON(MessageStatusStruct{OK: true, ID: data.ID, Message: id.String()})
 			uploadTokens[id.String()] = 0
-			os.Mkdir("files/"+id.String(), 0666)
+			err = os.Mkdir("files/"+id.String(), 0666)
+			if err == nil {
+				_ = c.WriteJSON(MessageStatusStruct{OK: true, ID: data.ID, Message: id.String()})
+			} else {
+				_ = c.WriteJSON(MessageStatusStruct{OK: false, ID: data.ID, Message: "cannot create a directory for new file"})
+				log.Error("Cannot create a new directory for file upload", err.Error())
+			}
 			continue
 		}
 
@@ -658,10 +663,10 @@ func main() {
 							for _, f := range files {
 								if f.IsDir() {
 									if f.ModTime().Add(maxDiff).After(time.Now()) {
-										log.Debug("Removing old file", f.Name())
-										err = os.RemoveAll(f.Name())
+										log.Debug("Removing old file: ", f.Name())
+										err = os.RemoveAll("files/" + f.Name())
 										if err != nil {
-											log.Error("Cannot get directories for file cleanup")
+											log.Error("Cannot delete file: ", f.Name())
 										}
 									}
 								}
