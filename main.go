@@ -566,16 +566,16 @@ func downloadFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, string(GenerateStatus(false, "invalid token")), 404)
 		return
 	}
-	info, err := ioutil.ReadDir(path.Join(Config.FileLocation, token) + "/")
+	info, err := ioutil.ReadDir(path.Join(Config.FileLocation, token))
 	if err != nil {
-		log.Error("cannot access files when a user tried to download a file:", err.Error())
+		log.Error("cannot access files when a user tried to download a file: ", err.Error())
 		http.Error(w, string(GenerateStatus(false, "cannot access files")), 500)
 		return
 	}
 	// read the file https://mrwaggel.be/post/golang-transmit-files-over-a-nethttp-server-to-clients/
-	file, err := os.Open(info[0].Name())
+	file, err := os.Open(path.Join(Config.FileLocation, token) + "/" + info[0].Name())
 	if err != nil {
-		log.Error("cannot access the file when a user tried to download it's file:", err.Error())
+		log.Error("cannot access the file when a user tried to download it's file: ", err.Error())
 		http.Error(w, string(GenerateStatus(false, err.Error())), 500)
 		return
 	}
@@ -645,7 +645,7 @@ func main() {
 					go func() {
 						maxDiff := time.Minute * time.Duration(Config.FileSaveDuration)
 						for {
-							time.Sleep(time.Minute)
+							time.Sleep(time.Second)
 							log.Trace("removing unused tokens")
 							for k := range uploadTokens { // remove unused tokens
 								id, _ := ksuid.Parse(k)
@@ -662,7 +662,7 @@ func main() {
 							}
 							for _, f := range files {
 								if f.IsDir() {
-									if f.ModTime().Add(maxDiff).After(time.Now()) {
+									if !f.ModTime().Add(maxDiff).After(time.Now()) {
 										log.Debug("Removing old file: ", f.Name())
 										err = os.RemoveAll("files/" + f.Name())
 										if err != nil {
