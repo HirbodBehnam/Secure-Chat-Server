@@ -580,17 +580,11 @@ func downloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
-	// get some info about the file
-	FileHeader := make([]byte, 512)
-	_, _ = file.Read(FileHeader)
-	FileContentType := http.DetectContentType(FileHeader)
 	// set the headers
 	w.Header().Set("Content-Disposition", "attachment; filename="+info[0].Name())
-	w.Header().Set("Content-Type", FileContentType)
+	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(info[0].Size(), 10))
 	// send the file
-	// we read 512 bytes from the file already, so we reset the offset back to 0
-	file.Seek(0, 0)
 	_, _ = io.Copy(w, file) //'Copy' the file to the client
 }
 
@@ -645,7 +639,7 @@ func main() {
 					go func() {
 						maxDiff := time.Minute * time.Duration(Config.FileSaveDuration)
 						for {
-							time.Sleep(time.Second)
+							time.Sleep(time.Minute)
 							log.Trace("removing unused tokens")
 							for k := range uploadTokens { // remove unused tokens
 								id, _ := ksuid.Parse(k)
